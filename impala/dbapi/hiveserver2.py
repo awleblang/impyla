@@ -53,6 +53,9 @@ class HiveServer2Connection(Connection):
 
     def cursor(self, session_handle=None, user=None, configuration=None):
         # PEP 249
+        # Impyla hs2 returns proper datatypes, it should accept them as well
+        if configuration:
+            configuration = {key:str(value) for key, value in configuration.iteritems()}
         if user is None:
             user = getpass.getuser()
         if session_handle is None:
@@ -142,8 +145,20 @@ class HiveServer2Cursor(Cursor):
         if self._last_operation_active:
             self._reset_state()
 
+    def execute_async(self, operation, parameters=None, configuration=None):
+        # PEP 249
+        op = self._execute(operation, parameters, configuration)
+        op()
+
     def execute(self, operation, parameters=None, configuration=None):
         # PEP 249
+        op = self._execute(operation, parameters, configuration)
+        self._execute_sync(op)
+
+    def _execute(self, operation, parameters=None, configuration=None):
+        # Impyla hs2 returns proper datatypes, it should accept them as well
+        if configuration:
+            configuration = {key:str(value) for key, value in configuration.iteritems()}
         def op():
             if parameters:
                 self._last_operation_string = _bind_parameters(operation,
@@ -153,8 +168,7 @@ class HiveServer2Cursor(Cursor):
             self._last_operation_handle = rpc.execute_statement(
                 self.service, self.session_handle, self._last_operation_string,
                 configuration)
-
-        self._execute_sync(op)
+        return op
 
     def _execute_sync(self, operation_fn):
         # operation_fn should set self._last_operation_string and
